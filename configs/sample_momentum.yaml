@@ -1,0 +1,25 @@
+name: sample_momentum
+data_dir: data/raw
+processed_dir: data/processed
+results_dir: results
+universe:
+  top_n: 40
+  liquidity_lookback_bars: 180
+  min_history_bars: 126
+  quote_volume_field: quote_volume
+signal:
+  kind: cross_sectional_momentum
+  lookback_bars: 42
+portfolio:
+  long_quantile: 0.2
+  short_quantile: 0.2
+  gross_exposure: 1.0
+backtest:
+  bar_hours: 4
+  rebalance_every_bars: 1
+costs:
+  fee_bps: 4.0
+  slippage_bps: 2.0
+report:
+  pressure_fee_multipliers: [1.0, 2.0, 3.0]
+  pressure_slippage_multipliers: [1.0, 2.0, 3.0]

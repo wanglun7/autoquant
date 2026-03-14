@@ -1,0 +1,23 @@
+name: trading_autoresearch_v1
+data_dir: data/raw
+processed_dir: data/processed/trading_autoresearch
+results_dir: results/trading_autoresearch
+
+costs:
+  fee_bps: 4.0
+  slippage_bps: 2.0
+
+split:
+  train_frac: 0.5
+  validation_frac: 0.25
+  test_frac: 0.25
+
+constraints:
+  min_test_net_return: 0.0
+  min_test_sharpe: -0.25
+  max_drawdown_limit: 0.6
+  require_positive_under_2x_cost: true
+
+bar_hours: 4
+pair_pool_size: 8
+champion_family_mode: by_family

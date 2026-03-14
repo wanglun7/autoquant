@@ -1,0 +1,34 @@
+name: paper_ficura_binance
+paper_id: ficura
+data_dir: data/raw
+results_dir: results/paper_approx
+universe:
+  liquidity_lookback_bars: 360
+  weight_lookback_bars: 180
+  top_n: 60
+  min_history_bars: 1260
+  exclude_bases:
+    - USDC
+    - FDUSD
+    - TUSD
+    - BUSD
+    - USDP
+    - DAI
+  exclude_symbols: []
+paper:
+  rebalance_weekday: 0
+  rebalance_hour_utc: 0
+  ltw_lookback_weeks: 3
+  grobys_formation_days: 30
+  grobys_skip_days: 1
+  ficura_formation_weeks: [1, 2, 4, 12, 26]
+  ficura_large_liquid_fraction: 0.3
+  ficura_total_universe: 60
+portfolio:
+  gross_exposure: 1.0
+costs:
+  fee_bps: 4.0
+  slippage_bps: 2.0
+report:
+  pressure_fee_multipliers: [1.0, 2.0, 3.0]
+  pressure_slippage_multipliers: [1.0, 2.0, 3.0]
