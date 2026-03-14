@@ -1,5 +1,5 @@
 version: 1
 interface:
   display_name: Autoresearch Trading
-  short_description: Run the repo-specific trading autoresearch loop with one hypothesis at a time, using the fixed evaluator and research log.
-  default_prompt: Continue the trading autoresearch loop in this repo. Read program_trading.md, inspect the latest champions, results, and research log, choose one family and one objective, state one hypothesis, modify only trading_autoresearch/strategy.py, run one evaluation batch, record the conclusion, and summarize whether the new strategy was rejected, kept, or promoted.
+  short_description: Run the repo-specific trading autoresearch loop with first-principles hypotheses, the fixed evaluator, and a research log.
+  default_prompt: Continue the trading autoresearch loop in this repo. Answer in Chinese by default. Read program_trading.md, inspect the latest champions, results, and research log, choose one family and one objective, think from first principles about available inputs, alpha mechanism, and cost mechanism, state one hypothesis, modify only trading_autoresearch/strategy.py, run one evaluation batch, record the conclusion, and summarize whether the new strategy was rejected, kept, or promoted.

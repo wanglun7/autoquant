@@ -11,6 +11,7 @@ Use this skill for repo-specific strategy evolution in this project. The workflo
 - Then read the latest results in `results/trading_autoresearch/...`, including `research_log.jsonl`.
 - Only modify `src/binance4h_research/trading_autoresearch/strategy.py`.
 - Do not modify `prepare_market.py`, `evaluate.py`, `runner.py`, or the fixed config during a normal research turn.
+- Default to answering the user in Chinese unless they explicitly ask for another language.
 
 ## Workflow
 
@@ -49,6 +50,8 @@ PYTHONPATH=src python3 -m binance4h_research record-trading-research-turn --prog
 - Treat `research_log.jsonl` as the memory of what was tried and what was learned.
 - Keep each run to one clear idea.
 - State one objective and one hypothesis before changing code.
+- Use first-principles thinking: start from the fixed inputs that actually exist in this repo, the mechanism that could create alpha, the mechanism that creates costs and drawdowns, and only then choose one code change.
+- Prefer mechanism-first hypotheses over surface-level parameter sweeps. Do not change parameters without stating what market behavior the change is trying to capture or avoid.
 - Prefer improving the current family champion over inventing multiple unrelated concepts in one turn.
 - Never change the evaluator to make a strategy look better.
 - Do not auto-push plain `keep` runs.
