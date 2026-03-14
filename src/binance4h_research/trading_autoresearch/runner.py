@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import json
+from math import inf
 
 from .evaluate import evaluate_current_strategy
 from .prepare_market import build_context, save_context_summary
@@ -12,6 +13,7 @@ from .store import (
     append_result,
     ensure_research_log,
     load_champion,
+    load_research_turns,
     load_results,
     publish_family_champion,
     save_champion,
@@ -19,6 +21,9 @@ from .store import (
     validate_research_turn,
     write_results_tsv,
 )
+
+
+TRACKED_FAMILIES = ("cross_sectional", "btc_time_series", "relative_value")
 
 
 def build_trading_context(program: TradingAutoResearchProgram) -> dict[str, Path]:
@@ -187,6 +192,121 @@ def record_trading_research_turn(program: TradingAutoResearchProgram, note_path:
 
 def show_trading_research_log(program: TradingAutoResearchProgram) -> Path:
     return ensure_research_log(program.research_log_path)
+
+
+def _tracked_families(records: list[dict[str, object]], turns: list[dict[str, object]], champions: dict[str, object]) -> list[str]:
+    names = list(TRACKED_FAMILIES)
+    for record in records:
+        family = str(record["family"])
+        if family not in names:
+            names.append(family)
+    for turn in turns:
+        family = str(turn["family"])
+        if family not in names:
+            names.append(family)
+    for family in dict(champions.get("families", {})):
+        if family not in names:
+            names.append(family)
+    return names
+
+
+def _is_high_quality_turn(turn: dict[str, object]) -> bool:
+    return (
+        str(turn.get("info_gain", "")) in {"high", "medium"}
+        and not str(turn.get("duplicate_of_run_id", ""))
+        and bool(str(turn.get("conclusion", "")).strip())
+        and bool(str(turn.get("next_best_axis", "")).strip())
+    )
+
+
+def _family_metrics(
+    family: str,
+    *,
+    records: list[dict[str, object]],
+    turns: list[dict[str, object]],
+    champions: dict[str, object],
+) -> dict[str, object]:
+    family_records = [record for record in records if record.get("family") == family]
+    family_turns = [turn for turn in turns if turn.get("family") == family]
+    champion = dict(champions.get("families", {})).get(family)
+    duplicate_turns = sum(1 for turn in family_turns if str(turn.get("duplicate_of_run_id", "")))
+    high_quality_turns = sum(1 for turn in family_turns if _is_high_quality_turn(turn))
+    return {
+        "experiments": len(family_records),
+        "research_turns": len(family_turns),
+        "keep_runs": sum(1 for record in family_records if record.get("status") == "keep"),
+        "duplicate_turns": duplicate_turns,
+        "high_quality_turns": high_quality_turns,
+        "has_family_champion": champion is not None,
+        "family_champion_run_id": str(champion["run_id"]) if champion else "",
+        "family_champion_score": float(champion["primary_score"]) if champion else None,
+        "last_run_id": str(family_records[-1]["run_id"]) if family_records else "",
+    }
+
+
+def _weakness_key(metrics: dict[str, object]) -> tuple[float, float, int, int]:
+    has_champion = 1.0 if metrics["has_family_champion"] else 0.0
+    champion_score = float(metrics["family_champion_score"]) if metrics["family_champion_score"] is not None else -inf
+    return (
+        has_champion,
+        champion_score,
+        int(metrics["research_turns"]),
+        int(metrics["experiments"]),
+    )
+
+
+def build_trading_research_scorecard(program: TradingAutoResearchProgram) -> dict[str, object]:
+    records = load_results(program.run_dir / "experiments.jsonl")
+    turns = load_research_turns(program.research_log_path)
+    champions = load_champion(program.run_dir / "champions.json")
+    families = _tracked_families(records, turns, champions)
+    family_rows = {
+        family: _family_metrics(family, records=records, turns=turns, champions=champions)
+        for family in families
+    }
+    duplicate_turns = sum(1 for turn in turns if str(turn.get("duplicate_of_run_id", "")))
+    high_quality_turns = sum(1 for turn in turns if _is_high_quality_turn(turn))
+    explanation_complete_turns = sum(
+        1
+        for turn in turns
+        if bool(str(turn.get("objective", "")).strip())
+        and bool(str(turn.get("hypothesis", "")).strip())
+        and bool(str(turn.get("conclusion", "")).strip())
+        and bool(str(turn.get("next_best_axis", "")).strip())
+    )
+    recommended_family = min(family_rows.items(), key=lambda item: _weakness_key(item[1]))[0] if family_rows else ""
+    generated_at = datetime.now(timezone.utc).isoformat()
+    return {
+        "generated_at": generated_at,
+        "summary": {
+            "total_experiments": len(records),
+            "research_turns": len(turns),
+            "high_quality_experiments": high_quality_turns,
+            "duplicate_rate": (duplicate_turns / len(turns)) if turns else 0.0,
+            "explanation_completeness_rate": (explanation_complete_turns / len(turns)) if turns else 0.0,
+            "family_asset_count": len(dict(champions.get("families", {}))),
+            "knowledge_asset_count": len(turns),
+        },
+        "recommended_next_turn": {
+            "turn_mode": "explore",
+            "family": recommended_family,
+        },
+        "families": family_rows,
+    }
+
+
+def update_trading_research_scorecard(program: TradingAutoResearchProgram) -> Path:
+    payload = build_trading_research_scorecard(program)
+    path = program.research_scorecard_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def show_trading_research_scorecard(program: TradingAutoResearchProgram) -> Path:
+    if not program.research_scorecard_path.exists():
+        return update_trading_research_scorecard(program)
+    return program.research_scorecard_path
 
 
 def replay_trading_run(program: TradingAutoResearchProgram, run_id: str) -> Path:

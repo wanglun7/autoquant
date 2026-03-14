@@ -4,6 +4,8 @@
 
 Find Binance USDT-M perpetual strategies that remain positive after `fee + slippage + funding`, and still survive a `2x` cost stress test.
 
+This program treats the agent as an automated quant researcher, not as a portfolio manager or execution system. The job is to produce high-quality experiments, avoid low-information repetition, explain why an idea worked or failed, and preserve both strategy assets and research knowledge.
+
 ## Research Loop
 
 Run this as a hypothesis-driven loop, not a blind parameter search:
@@ -16,6 +18,20 @@ Run this as a hypothesis-driven loop, not a blind parameter search:
 6. record the conclusion in the research log
 
 If a run is only `keep`, log it but do not preserve it as the active working strategy.
+
+Default to `Explore First` when the user does not specify a direction:
+
+1. read `research_scorecard.json`
+2. choose the weakest family or least-covered family
+3. run one explore turn to test a mechanism with high information value
+4. after a family produces a real promotion, spend at most a small number of follow-up turns converging on that family
+
+Use first principles before each turn:
+
+- what inputs actually exist in the fixed context
+- what alpha mechanism those inputs could express
+- what cost, turnover, or drawdown mechanism could break the idea
+- why this one change is worth testing now
 
 ## Core Rule
 
@@ -99,12 +115,17 @@ Runs also record two explicit promotion flags:
 - Prefer changing one family at a time.
 - If complexity rises but test performance does not clearly improve, reject it.
 
-## Suggested Research Order
+## Research Modes
 
-1. Improve `cross_sectional` first.
-2. Use `btc_time_series` as a separate fallback family.
-3. Use `relative_value` only on large-liquid pairs.
-4. Treat funding, regime, volatility, and liquidity as internal logic inside `strategy.py`, not as separate evaluators.
+- `explore`
+  - default mode when the user does not specify a family
+  - prioritizes the weakest family or least-covered family
+  - optimizes for information gain, not just immediate promotion
+- `converge`
+  - used after a family has a viable champion worth refining
+  - optimizes for robustness, cost survival, and family champion quality
+
+Treat funding, regime, volatility, and liquidity as internal logic inside `strategy.py`, not as separate evaluators.
 
 ## Standard Commands
 
@@ -113,6 +134,9 @@ PYTHONPATH=src python3 -m binance4h_research build-trading-context --program con
 PYTHONPATH=src python3 -m binance4h_research run-trading-autoresearch-batch --program configs/trading_autoresearch.yaml
 PYTHONPATH=src python3 -m binance4h_research show-trading-champions --program configs/trading_autoresearch.yaml
 PYTHONPATH=src python3 -m binance4h_research replay-trading-run --program configs/trading_autoresearch.yaml --run-id <run_id>
+PYTHONPATH=src python3 -m binance4h_research show-trading-research-log --program configs/trading_autoresearch.yaml
+PYTHONPATH=src python3 -m binance4h_research update-trading-research-scorecard --program configs/trading_autoresearch.yaml
+PYTHONPATH=src python3 -m binance4h_research show-trading-research-scorecard --program configs/trading_autoresearch.yaml
 ```
 
 ## Result Files
@@ -121,6 +145,7 @@ PYTHONPATH=src python3 -m binance4h_research replay-trading-run --program config
 - `results/trading_autoresearch/<program>/results.tsv`
 - `results/trading_autoresearch/<program>/champions.json`
 - `results/trading_autoresearch/<program>/research_log.jsonl`
+- `results/trading_autoresearch/<program>/research_scorecard.json`
 - `results/trading_autoresearch/<program>/runs/<run_id>/summary.json`
 - `results/trading_autoresearch/<program>/champions/<family>/`
 - `results/trading_autoresearch/<program>/champions/global/`

@@ -11,12 +11,15 @@ from binance4h_research.trading_autoresearch.evaluate import TradingEvaluation
 from binance4h_research.trading_autoresearch.evaluate import evaluate_current_strategy
 from binance4h_research.trading_autoresearch.program import TradingAutoResearchProgram
 from binance4h_research.trading_autoresearch.runner import (
+    build_trading_research_scorecard,
     build_trading_context,
     evaluate_and_record,
     record_trading_research_turn,
     replay_trading_run,
     run_trading_autoresearch_batch,
     show_trading_research_log,
+    show_trading_research_scorecard,
+    update_trading_research_scorecard,
 )
 
 
@@ -226,6 +229,8 @@ def _research_turn_note(run_id: str, baseline_run_id: str) -> dict[str, object]:
     return {
         "timestamp": "2026-03-14T04:30:00Z",
         "family": "btc_time_series",
+        "turn_mode": "explore",
+        "mechanism_tag": "trend-strength-scaling",
         "objective": "Improve walk-forward stability without harming 2x cost resilience.",
         "hypothesis": "Scaling position size by trend strength may reduce weak-trend overexposure.",
         "planned_change": "Scale active BTC position size by normalized trend strength.",
@@ -235,6 +240,15 @@ def _research_turn_note(run_id: str, baseline_run_id: str) -> dict[str, object]:
         "status": "keep",
         "family_champion": False,
         "global_champion": False,
+        "failure_mode": "no_info_gain",
+        "info_gain": "medium",
+        "duplicate_of_run_id": "",
+        "family_state_before_turn": {
+            "family_champion_run_id": baseline_run_id,
+            "family_champion_score": 0.47,
+            "research_turns": 1,
+            "experiments": 2,
+        },
         "comparison": {
             "test_sharpe_delta": -0.02,
             "test_net_return_delta": -0.01,
@@ -305,6 +319,33 @@ def test_trading_research_log_roundtrip_and_cli(tmp_path: Path, monkeypatch, cap
     assert capsys.readouterr().out.strip() == str(log_path)
     entries = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(entries) == 2
+
+    scorecard = build_trading_research_scorecard(program)
+    assert scorecard["summary"]["research_turns"] == 2
+    assert scorecard["summary"]["high_quality_experiments"] == 2
+    assert scorecard["recommended_next_turn"]["turn_mode"] == "explore"
+    assert scorecard["recommended_next_turn"]["family"] == "cross_sectional"
+
+    scorecard_path = update_trading_research_scorecard(program)
+    assert scorecard_path.exists()
+    shown_path = show_trading_research_scorecard(program)
+    assert shown_path == scorecard_path
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["binance4h", "update-trading-research-scorecard", "--program", str(program_yaml)],
+    )
+    cli_main()
+    assert capsys.readouterr().out.strip() == str(scorecard_path)
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["binance4h", "show-trading-research-scorecard", "--program", str(program_yaml)],
+    )
+    cli_main()
+    assert capsys.readouterr().out.strip() == str(scorecard_path)
 
 
 def test_trading_research_log_rejects_unknown_run_id(tmp_path: Path) -> None:

@@ -10,6 +10,8 @@ import pandas as pd
 RESEARCH_TURN_REQUIRED_FIELDS = (
     "timestamp",
     "family",
+    "turn_mode",
+    "mechanism_tag",
     "objective",
     "hypothesis",
     "planned_change",
@@ -19,6 +21,10 @@ RESEARCH_TURN_REQUIRED_FIELDS = (
     "status",
     "family_champion",
     "global_champion",
+    "failure_mode",
+    "info_gain",
+    "duplicate_of_run_id",
+    "family_state_before_turn",
     "comparison",
     "conclusion",
     "next_best_axis",
@@ -91,6 +97,8 @@ def validate_research_turn(note: dict[str, object]) -> dict[str, object]:
     for field in (
         "timestamp",
         "family",
+        "turn_mode",
+        "mechanism_tag",
         "objective",
         "hypothesis",
         "planned_change",
@@ -98,6 +106,9 @@ def validate_research_turn(note: dict[str, object]) -> dict[str, object]:
         "baseline_run_id",
         "run_id",
         "status",
+        "failure_mode",
+        "info_gain",
+        "duplicate_of_run_id",
         "conclusion",
         "next_best_axis",
     ):
@@ -105,6 +116,10 @@ def validate_research_turn(note: dict[str, object]) -> dict[str, object]:
 
     for field in ("family_champion", "global_champion"):
         _require_bool(note, field)
+
+    family_state = note["family_state_before_turn"]
+    if not isinstance(family_state, dict):
+        raise ValueError("family_state_before_turn must be an object")
 
     comparison = note["comparison"]
     if not isinstance(comparison, dict):
