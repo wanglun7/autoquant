@@ -19,6 +19,8 @@ from .program import TradingAutoResearchProgram
 class TradingEvaluation:
     strategy_id: str
     family: str
+    execution_mode: str
+    family_stage: str
     summary: dict[str, float | int | str | list[str]]
     splits: dict[str, dict[str, float]]
     walk_forward: list[dict[str, float | str]]
@@ -99,6 +101,24 @@ def _load_strategy_module():
     return importlib.reload(strategy_module)
 
 
+def _infer_execution_mode(family: str) -> str:
+    mapping = {
+        "cross_sectional": "cross_sectional",
+        "btc_time_series": "time_series",
+        "relative_value": "pair_trade",
+    }
+    return mapping.get(family, "time_series")
+
+
+def _infer_family_stage(family: str, metadata: dict[str, object]) -> str:
+    explicit = str(metadata.get("family_stage", "")).strip()
+    if explicit:
+        return explicit
+    if family in {"cross_sectional", "btc_time_series", "relative_value"}:
+        return "formal"
+    return "candidate"
+
+
 def evaluate_current_strategy(program: TradingAutoResearchProgram) -> TradingEvaluation:
     context = build_context(program)
     strategy_module = _load_strategy_module()
@@ -136,6 +156,8 @@ def evaluate_current_strategy(program: TradingAutoResearchProgram) -> TradingEva
     return TradingEvaluation(
         strategy_id=str(metadata.get("strategy_id", "unknown_strategy")),
         family=str(metadata.get("family", "unknown_family")),
+        execution_mode=str(metadata.get("execution_mode", _infer_execution_mode(str(metadata.get("family", "unknown_family"))))),
+        family_stage=_infer_family_stage(str(metadata.get("family", "unknown_family")), metadata),
         summary=payload_summary,
         splits=splits,
         walk_forward=walk_forward,

@@ -16,14 +16,17 @@ from .paper_approx import compare_paper_approx, run_paper_approx
 from .paper_approx_config import load_paper_approx_config
 from .trading_autoresearch import (
     build_trading_context,
+    build_trading_family_registry,
     build_trading_research_scorecard,
     load_trading_autoresearch_program,
     record_trading_research_turn,
     replay_trading_run,
     run_trading_autoresearch_batch,
     show_trading_champion,
+    show_trading_family_registry,
     show_trading_research_log,
     show_trading_research_scorecard,
+    update_trading_family_registry,
     update_trading_research_scorecard,
 )
 from .universe import build_universe_membership, save_universe_membership
@@ -107,6 +110,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     trading_log = sub.add_parser("show-trading-research-log", help="Show the trading-autoresearch research-log path")
     trading_log.add_argument("--program", required=True)
+
+    trading_families = sub.add_parser("update-trading-family-registry", help="Build the trading-autoresearch family registry")
+    trading_families.add_argument("--program", required=True)
+
+    trading_show_families = sub.add_parser("show-trading-family-registry", help="Show the trading-autoresearch family-registry path")
+    trading_show_families.add_argument("--program", required=True)
 
     trading_scorecard = sub.add_parser("update-trading-research-scorecard", help="Build the trading-autoresearch research scorecard")
     trading_scorecard.add_argument("--program", required=True)
@@ -259,6 +268,18 @@ def main() -> None:
     if args.command == "show-trading-research-log":
         program = load_trading_autoresearch_program(args.program)
         path = show_trading_research_log(program)
+        print(path)
+        return
+
+    if args.command == "update-trading-family-registry":
+        program = load_trading_autoresearch_program(args.program)
+        path = update_trading_family_registry(program)
+        print(path)
+        return
+
+    if args.command == "show-trading-family-registry":
+        program = load_trading_autoresearch_program(args.program)
+        path = show_trading_family_registry(program)
         print(path)
         return
 

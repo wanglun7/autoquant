@@ -10,8 +10,13 @@ import pandas as pd
 RESEARCH_TURN_REQUIRED_FIELDS = (
     "timestamp",
     "family",
+    "execution_mode",
+    "family_stage",
     "turn_mode",
+    "turn_action",
     "mechanism_tag",
+    "mechanism_summary",
+    "differentiation_note",
     "objective",
     "hypothesis",
     "planned_change",
@@ -38,6 +43,10 @@ RESEARCH_TURN_REQUIRED_COMPARISON_FIELDS = (
 
 def empty_champions() -> dict[str, object]:
     return {"families": {}, "global": None}
+
+
+def empty_family_registry() -> dict[str, object]:
+    return {"families": {}}
 
 
 def load_results(path: Path) -> list[dict[str, object]]:
@@ -97,8 +106,13 @@ def validate_research_turn(note: dict[str, object]) -> dict[str, object]:
     for field in (
         "timestamp",
         "family",
+        "execution_mode",
+        "family_stage",
         "turn_mode",
+        "turn_action",
         "mechanism_tag",
+        "mechanism_summary",
+        "differentiation_note",
         "objective",
         "hypothesis",
         "planned_change",
@@ -152,6 +166,8 @@ def write_results_tsv(path: Path, records: list[dict[str, object]]) -> Path:
                 "run_id": record["run_id"],
                 "parent_run_id": record.get("parent_run_id", ""),
                 "family": record["family"],
+                "execution_mode": record.get("execution_mode", ""),
+                "family_stage": record.get("family_stage", "legacy"),
                 "strategy_id": record["strategy_id"],
                 "status": record["status"],
                 "primary_score": record["primary_score"],
@@ -186,6 +202,20 @@ def save_champion(path: Path, champion: dict[str, object]) -> Path:
         "families": dict(champion.get("families", {})),
         "global": champion.get("global"),
     }
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def load_family_registry(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return empty_family_registry()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return {"families": dict(raw.get("families", {}))}
+
+
+def save_family_registry(path: Path, registry: dict[str, object]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"families": dict(registry.get("families", {}))}
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return path
 

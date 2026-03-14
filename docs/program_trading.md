@@ -4,13 +4,44 @@
 
 Find Binance USDT-M perpetual strategies that remain positive after `fee + slippage + funding`, and still survive a `2x` cost stress test.
 
-This program treats the agent as an automated quant researcher, not as a portfolio manager or execution system. The job is to produce high-quality experiments, avoid low-information repetition, explain why an idea worked or failed, and preserve both strategy assets and research knowledge.
+This program treats the agent as an automated quant researcher. The job is to produce high-quality experiments, avoid repeated low-information turns, explain why an idea worked or failed, and preserve both strategy assets and research knowledge.
+
+## Core Rule
+
+This workflow follows the Karpathy `autoresearch` pattern:
+
+- Human edits this program file.
+- The agent reads this file, the latest results, and the current champions.
+- The agent may change only `src/binance4h_research/trading_autoresearch/strategy.py`.
+- Data preparation, cost model, split logic, and evaluator stay fixed.
+
+## Family Model
+
+`family` is the primary research asset unit. Families are parallel, not nested.
+
+- `family`
+  - a stable, semantic strategy family name
+  - examples: `cross_sectional`, `btc_time_series`, `trend_pullback_state_machine`
+- `execution_mode`
+  - the execution shape used by that family
+  - current common values: `cross_sectional`, `time_series`, `pair_trade`
+- `family_stage`
+  - `candidate` or `formal`
+  - only formal families get published champion code
+
+Legacy families remain valid:
+
+- `cross_sectional`
+- `btc_time_series`
+- `relative_value`
+
+They are now just existing formal families, not a privileged parent layer.
 
 ## Research Loop
 
 Run this as a hypothesis-driven loop, not a blind parameter search:
 
-1. choose one family
+1. choose one family or propose a new family
 2. restate one objective
 3. write one falsifiable hypothesis
 4. make one focused code change
@@ -22,9 +53,9 @@ If a run is only `keep`, log it but do not preserve it as the active working str
 Default to `Explore First` when the user does not specify a direction:
 
 1. read `research_scorecard.json`
-2. choose the weakest family or least-covered family
-3. run one explore turn to test a mechanism with high information value
-4. after a family produces a real promotion, spend at most a small number of follow-up turns converging on that family
+2. if a promising candidate family exists, deepen it
+3. else if an `execution_mode` has weak coverage, explore a new family there
+4. else converge on the weakest formal family
 
 Use first principles before each turn:
 
@@ -32,15 +63,6 @@ Use first principles before each turn:
 - what alpha mechanism those inputs could express
 - what cost, turnover, or drawdown mechanism could break the idea
 - why this one change is worth testing now
-
-## Core Rule
-
-This workflow follows the Karpathy `autoresearch` pattern:
-
-- Human edits this program file.
-- The agent reads this file, the latest results, and the current champion.
-- The agent may change only `src/binance4h_research/trading_autoresearch/strategy.py`.
-- Data preparation, cost model, split logic, and evaluator stay fixed.
 
 ## Fixed Files
 
@@ -55,27 +77,20 @@ Do not modify these during normal research runs.
 
 - `src/binance4h_research/trading_autoresearch/strategy.py`
 
-## Published Family Champions
+## Published Champion Assets
 
-- Every promoted family champion is also mirrored into `src/binance4h_research/trading_autoresearch/family_champions/<family>.py`
+- Every formal family champion is mirrored into `src/binance4h_research/trading_autoresearch/family_champions/<family>.py`
 - Treat these files as published outputs of the research loop, not as the main mutation surface
 - Continue editing only `strategy.py` during normal research runs
-- When starting a new turn for a family, prefer using that family's mirrored champion as the working baseline
+- When starting a new turn for a formal family, prefer using that family champion as the working baseline
+- When starting a new candidate family, prefer the strongest formal family in the same `execution_mode` as the baseline
 
-The agent may invent new signals, filters, ranking formulas, spread logic, and position mapping inside this file, as long as it preserves the public interface:
+The agent may invent new signals, filters, ranking formulas, spread logic, and position mapping inside `strategy.py`, as long as it preserves the public interface:
 
 - `build_cross_sectional_weights(context, ...)`
 - `build_btc_time_series_weights(context, ...)`
 - `build_relative_value_weights(context, ...)`
 - `build_weights(context)`
-
-## Supported Families
-
-- `cross_sectional`
-- `btc_time_series`
-- `relative_value`
-
-Time series research is restricted to `BTCUSDT`.
 
 ## Evaluation Rules
 
@@ -96,17 +111,24 @@ Every run is evaluated on the same fixed setup:
   - or `2x` cost stress turns non-positive
 - `keep`
   - passes all hard constraints
-- `champion`
-  - depends on `champion_family_mode`
-  - `by_family`: beats the current family champion on primary score
-  - `global`: beats the current global champion on primary score
-
-Runs also record two explicit promotion flags:
-
 - `family_champion`
-  - beats the current champion inside the same family
+  - best kept run inside the same formal family
 - `global_champion`
-  - beats the current best kept run across all families
+  - best kept run across all families
+
+If a family is still `candidate`, it may produce a `keep`, but it does not publish a family champion until it becomes `formal`.
+
+## Family Lifecycle
+
+- `candidate`
+  - created when the agent proposes a new family
+- `formal`
+  - automatically reached after:
+    - at least 2 non-duplicate turns
+    - at least 1 `keep`
+    - at least 1 turn with `info_gain != low`
+
+Candidate families are knowledge assets only. Formal families become strategy assets.
 
 ## Complexity Discipline
 
@@ -114,18 +136,7 @@ Runs also record two explicit promotion flags:
 - Do not combine many new concepts at once.
 - Prefer changing one family at a time.
 - If complexity rises but test performance does not clearly improve, reject it.
-
-## Research Modes
-
-- `explore`
-  - default mode when the user does not specify a family
-  - prioritizes the weakest family or least-covered family
-  - optimizes for information gain, not just immediate promotion
-- `converge`
-  - used after a family has a viable champion worth refining
-  - optimizes for robustness, cost survival, and family champion quality
-
-Treat funding, regime, volatility, and liquidity as internal logic inside `strategy.py`, not as separate evaluators.
+- Do not present a parameter tweak as a new family.
 
 ## Standard Commands
 
@@ -135,6 +146,8 @@ PYTHONPATH=src python3 -m binance4h_research run-trading-autoresearch-batch --pr
 PYTHONPATH=src python3 -m binance4h_research show-trading-champions --program configs/trading_autoresearch.yaml
 PYTHONPATH=src python3 -m binance4h_research replay-trading-run --program configs/trading_autoresearch.yaml --run-id <run_id>
 PYTHONPATH=src python3 -m binance4h_research show-trading-research-log --program configs/trading_autoresearch.yaml
+PYTHONPATH=src python3 -m binance4h_research update-trading-family-registry --program configs/trading_autoresearch.yaml
+PYTHONPATH=src python3 -m binance4h_research show-trading-family-registry --program configs/trading_autoresearch.yaml
 PYTHONPATH=src python3 -m binance4h_research update-trading-research-scorecard --program configs/trading_autoresearch.yaml
 PYTHONPATH=src python3 -m binance4h_research show-trading-research-scorecard --program configs/trading_autoresearch.yaml
 ```
@@ -144,9 +157,9 @@ PYTHONPATH=src python3 -m binance4h_research show-trading-research-scorecard --p
 - `results/trading_autoresearch/<program>/experiments.jsonl`
 - `results/trading_autoresearch/<program>/results.tsv`
 - `results/trading_autoresearch/<program>/champions.json`
+- `results/trading_autoresearch/<program>/families.json`
 - `results/trading_autoresearch/<program>/research_log.jsonl`
 - `results/trading_autoresearch/<program>/research_scorecard.json`
 - `results/trading_autoresearch/<program>/runs/<run_id>/summary.json`
-- `results/trading_autoresearch/<program>/champions/<family>/`
 - `results/trading_autoresearch/<program>/champions/global/`
 - `src/binance4h_research/trading_autoresearch/family_champions/`
