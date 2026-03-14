@@ -61,7 +61,16 @@ Every run is evaluated on the same fixed setup:
 - `keep`
   - passes all hard constraints
 - `champion`
-  - passes all hard constraints and beats the current family champion on primary score
+  - depends on `champion_family_mode`
+  - `by_family`: beats the current family champion on primary score
+  - `global`: beats the current global champion on primary score
+
+Runs also record two explicit promotion flags:
+
+- `family_champion`
+  - beats the current champion inside the same family
+- `global_champion`
+  - beats the current best kept run across all families
 
 ## Complexity Discipline
 
@@ -93,3 +102,4 @@ PYTHONPATH=src python3 -m binance4h_research replay-trading-run --program config
 - `results/trading_autoresearch/<program>/champions.json`
 - `results/trading_autoresearch/<program>/runs/<run_id>/summary.json`
 - `results/trading_autoresearch/<program>/champions/<family>/`
+- `results/trading_autoresearch/<program>/champions/global/`

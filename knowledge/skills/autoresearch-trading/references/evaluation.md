@@ -23,7 +23,11 @@ The fixed evaluator lives in:
 
 ## Primary Score
 
-Current champion comparison uses test-set Sharpe as the primary score, after the hard constraints are applied.
+Champion comparison uses test-set Sharpe as the primary score, after the hard constraints are applied.
+
+- `family_champion`: best kept run within the same family
+- `global_champion`: best kept run across all families
+- `champion`: the active promotion alias controlled by `champion_family_mode`
 
 ## Output Files
 

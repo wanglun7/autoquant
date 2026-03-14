@@ -7,6 +7,10 @@ import shutil
 import pandas as pd
 
 
+def empty_champions() -> dict[str, object]:
+    return {"families": {}, "global": None}
+
+
 def load_results(path: Path) -> list[dict[str, object]]:
     if not path.exists():
         return []
@@ -26,7 +30,6 @@ def write_results_tsv(path: Path, records: list[dict[str, object]]) -> Path:
         return path
     rows = []
     for record in records:
-        summary = record["summary"]
         splits = record["splits"]
         rows.append(
             {
@@ -39,6 +42,9 @@ def write_results_tsv(path: Path, records: list[dict[str, object]]) -> Path:
                 "test_sharpe": splits["test"]["sharpe"],
                 "test_net_total_return": splits["test"]["net_total_return"],
                 "reason_tags": ",".join(record["reason_tags"]),
+                "family_champion": record.get("family_champion", False),
+                "global_champion": record.get("global_champion", False),
+                "champion_scope": record.get("champion_scope", "none"),
                 "champion": record.get("champion", False),
             }
         )
@@ -46,15 +52,25 @@ def write_results_tsv(path: Path, records: list[dict[str, object]]) -> Path:
     return path
 
 
-def load_champion(path: Path) -> dict[str, dict[str, object]]:
+def load_champion(path: Path) -> dict[str, object]:
     if not path.exists():
-        return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+        return empty_champions()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if "families" in raw or "global" in raw:
+        return {
+            "families": dict(raw.get("families", {})),
+            "global": raw.get("global"),
+        }
+    return {"families": dict(raw), "global": None}
 
 
-def save_champion(path: Path, champion: dict[str, dict[str, object]]) -> Path:
+def save_champion(path: Path, champion: dict[str, object]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(champion, indent=2, ensure_ascii=False), encoding="utf-8")
+    payload = {
+        "families": dict(champion.get("families", {})),
+        "global": champion.get("global"),
+    }
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return path
 
 

@@ -4,10 +4,12 @@ from pathlib import Path
 
 import pandas as pd
 
+from binance4h_research.trading_autoresearch.evaluate import TradingEvaluation
 from binance4h_research.trading_autoresearch.evaluate import evaluate_current_strategy
 from binance4h_research.trading_autoresearch.program import TradingAutoResearchProgram
 from binance4h_research.trading_autoresearch.runner import (
     build_trading_context,
+    evaluate_and_record,
     replay_trading_run,
     run_trading_autoresearch_batch,
 )
@@ -70,7 +72,7 @@ def test_trading_context_and_evaluation(tmp_path: Path) -> None:
     assert outputs["context_summary"].exists()
 
     evaluation = evaluate_current_strategy(program)
-    assert evaluation.family == "cross_sectional"
+    assert evaluation.family in {"cross_sectional", "btc_time_series", "relative_value"}
     assert "annual_return" in evaluation.summary
     assert set(evaluation.splits) == {"train", "validation", "test"}
 
@@ -96,5 +98,116 @@ def test_trading_runner_writes_logs_and_replay(tmp_path: Path) -> None:
 
     record = json.loads(rows[0])
     assert "parent_run_id" in record
+    assert "family_champion" in record
+    assert "global_champion" in record
+    assert "champion_scope" in record
+    champions = json.loads(outputs["champions"].read_text(encoding="utf-8"))
+    assert set(champions) == {"families", "global"}
     replay_path = replay_trading_run(program, record["run_id"])
     assert replay_path.exists()
+
+
+def _fake_evaluation(strategy_id: str, family: str, score: float) -> TradingEvaluation:
+    return TradingEvaluation(
+        strategy_id=strategy_id,
+        family=family,
+        summary={"annual_return": score, "net_total_return": score},
+        splits={
+            "train": {"annual_return": score, "sharpe": score, "net_total_return": score, "max_drawdown": -0.1},
+            "validation": {"annual_return": score, "sharpe": score, "net_total_return": score, "max_drawdown": -0.1},
+            "test": {"annual_return": score, "sharpe": score, "net_total_return": score, "max_drawdown": -0.1},
+        },
+        walk_forward=[],
+        primary_score=score,
+        status="keep",
+        reason_tags=[],
+    )
+
+
+def test_trading_runner_distinguishes_family_and_global_champions(tmp_path: Path, monkeypatch) -> None:
+    data_dir = _seed_market(tmp_path)
+    program = TradingAutoResearchProgram(
+        data_dir=data_dir,
+        processed_dir=tmp_path / "processed",
+        results_dir=tmp_path / "results",
+    )
+    strategy_path = tmp_path / "strategy.py"
+    strategy_path.write_text("print('strategy')\n", encoding="utf-8")
+
+    evaluations = iter(
+        [
+            _fake_evaluation("cs_a", "cross_sectional", 0.50),
+            _fake_evaluation("btc_a", "btc_time_series", 0.30),
+            _fake_evaluation("btc_b", "btc_time_series", 0.60),
+        ]
+    )
+
+    monkeypatch.setattr(
+        "binance4h_research.trading_autoresearch.runner.evaluate_current_strategy",
+        lambda _: next(evaluations),
+    )
+    monkeypatch.setattr(
+        "binance4h_research.trading_autoresearch.runner._current_strategy_path",
+        lambda: strategy_path,
+    )
+
+    outputs = [evaluate_and_record(program) for _ in range(3)]
+
+    import json
+
+    records = [
+        json.loads(line)
+        for line in Path(outputs[-1]["experiments"]).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [record["champion_scope"] for record in records] == ["global", "family", "global"]
+    assert [record["family_champion"] for record in records] == [True, True, True]
+    assert [record["global_champion"] for record in records] == [True, False, True]
+    assert [record["champion"] for record in records] == [True, True, True]
+
+    champions = json.loads(Path(outputs[-1]["champions"]).read_text(encoding="utf-8"))
+    assert champions["families"]["cross_sectional"]["run_id"] == records[0]["run_id"]
+    assert champions["families"]["btc_time_series"]["run_id"] == records[2]["run_id"]
+    assert champions["global"]["run_id"] == records[2]["run_id"]
+
+
+def test_trading_runner_global_mode_uses_global_promotion_alias(tmp_path: Path, monkeypatch) -> None:
+    data_dir = _seed_market(tmp_path)
+    program = TradingAutoResearchProgram(
+        data_dir=data_dir,
+        processed_dir=tmp_path / "processed",
+        results_dir=tmp_path / "results",
+        champion_family_mode="global",
+    )
+    strategy_path = tmp_path / "strategy.py"
+    strategy_path.write_text("print('strategy')\n", encoding="utf-8")
+
+    evaluations = iter(
+        [
+            _fake_evaluation("cs_a", "cross_sectional", 0.50),
+            _fake_evaluation("btc_a", "btc_time_series", 0.30),
+        ]
+    )
+
+    monkeypatch.setattr(
+        "binance4h_research.trading_autoresearch.runner.evaluate_current_strategy",
+        lambda _: next(evaluations),
+    )
+    monkeypatch.setattr(
+        "binance4h_research.trading_autoresearch.runner._current_strategy_path",
+        lambda: strategy_path,
+    )
+
+    outputs = [evaluate_and_record(program) for _ in range(2)]
+
+    import json
+
+    records = [
+        json.loads(line)
+        for line in Path(outputs[-1]["experiments"]).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert records[0]["champion"] is True
+    assert records[1]["family_champion"] is True
+    assert records[1]["global_champion"] is False
+    assert records[1]["champion"] is False

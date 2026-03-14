@@ -28,7 +28,9 @@ PYTHONPATH=src python3 -m binance4h_research run-trading-autoresearch-batch --pr
 - `results/trading_autoresearch/trading_autoresearch_v1/results.tsv`
 - `results/trading_autoresearch/trading_autoresearch_v1/champions.json`
 - `results/trading_autoresearch/trading_autoresearch_v1/runs/<run_id>/summary.json`
-7. If the new run is `keep` or `champion`, commit the code changes and push the branch to the configured git remote. Push code, not large local data or generated result directories unless they are already intentionally tracked.
+7. If the new run is a `family_champion`, commit the code changes and push a research branch such as `research/<family>`.
+8. If the new run is a `global_champion`, commit the code changes and push the main working branch.
+9. If the run is only `keep`, do not auto-push; summarize the result and stop unless the user asked to persist keeps too.
 
 ## Rules
 
@@ -36,4 +38,6 @@ PYTHONPATH=src python3 -m binance4h_research run-trading-autoresearch-batch --pr
 - Keep each run to one clear idea.
 - Prefer improving the current family champion over inventing multiple unrelated concepts in one turn.
 - Never change the evaluator to make a strategy look better.
-- After a `keep` or `champion`, treat git push as part of the normal close-out. If no remote is configured, use the user's provided remote or ask once.
+- Do not auto-push plain `keep` runs.
+- Treat `family_champion` and `global_champion` differently: family promotions go to a research branch; global promotions may update the main branch.
+- If no remote is configured, use the user's provided remote or ask once.

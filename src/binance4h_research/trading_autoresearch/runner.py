@@ -20,6 +20,59 @@ def _current_strategy_path() -> Path:
     return Path(__file__).with_name("strategy.py")
 
 
+def _best_record(records: list[dict[str, object]], family: str | None = None) -> dict[str, object] | None:
+    candidates = [record for record in records if record.get("status") == "keep"]
+    if family is not None:
+        candidates = [record for record in candidates if record.get("family") == family]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda record: float(record["primary_score"]))
+
+
+def _record_run_id(record: dict[str, object] | None) -> str:
+    if not record:
+        return ""
+    return str(record["run_id"])
+
+
+def _record_score(record: dict[str, object] | None) -> float:
+    if not record:
+        return float("-inf")
+    return float(record["primary_score"])
+
+
+def _active_champion_flag(
+    program: TradingAutoResearchProgram,
+    *,
+    family_champion: bool,
+    global_champion: bool,
+) -> bool:
+    if program.champion_family_mode == "by_family":
+        return family_champion
+    if program.champion_family_mode == "global":
+        return global_champion
+    raise ValueError(f"Unsupported champion_family_mode: {program.champion_family_mode}")
+
+
+def _champion_scope(*, family_champion: bool, global_champion: bool) -> str:
+    if global_champion:
+        return "global"
+    if family_champion:
+        return "family"
+    return "none"
+
+
+def _champion_entry(record: dict[str, object], strategy_snapshot: Path) -> dict[str, object]:
+    return {
+        "run_id": record["run_id"],
+        "primary_score": record["primary_score"],
+        "family": record["family"],
+        "strategy_id": record["strategy_id"],
+        "summary": record["summary"],
+        "strategy_snapshot": str(strategy_snapshot),
+    }
+
+
 def evaluate_and_record(program: TradingAutoResearchProgram) -> dict[str, Path]:
     run_dir = program.run_dir
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -30,15 +83,23 @@ def evaluate_and_record(program: TradingAutoResearchProgram) -> dict[str, Path]:
 
     champions_path = run_dir / "champions.json"
     experiments_path = run_dir / "experiments.jsonl"
-    champions = load_champion(champions_path)
-    current_champion = champions.get(evaluation.family)
-    champion_score = float(current_champion["primary_score"]) if current_champion else float("-inf")
-    parent_run_id = str(current_champion["run_id"]) if current_champion else ""
-    is_champion = evaluation.status == "keep" and evaluation.primary_score > champion_score
+    existing_records = load_results(experiments_path)
+    family_parent = _best_record(existing_records, family=evaluation.family)
+    global_parent = _best_record(existing_records)
+    family_champion = evaluation.status == "keep" and evaluation.primary_score > _record_score(family_parent)
+    global_champion = evaluation.status == "keep" and evaluation.primary_score > _record_score(global_parent)
+    champion = _active_champion_flag(
+        program,
+        family_champion=family_champion,
+        global_champion=global_champion,
+    )
+    parent_record = global_parent if program.champion_family_mode == "global" else family_parent
 
     record = {
         "run_id": run_id,
-        "parent_run_id": parent_run_id,
+        "parent_run_id": _record_run_id(parent_record),
+        "family_parent_run_id": _record_run_id(family_parent),
+        "global_parent_run_id": _record_run_id(global_parent),
         "family": evaluation.family,
         "strategy_id": evaluation.strategy_id,
         "summary": evaluation.summary,
@@ -47,28 +108,33 @@ def evaluate_and_record(program: TradingAutoResearchProgram) -> dict[str, Path]:
         "primary_score": evaluation.primary_score,
         "status": evaluation.status,
         "reason_tags": evaluation.reason_tags,
-        "champion": is_champion,
+        "family_champion": family_champion,
+        "global_champion": global_champion,
+        "champion_scope": _champion_scope(
+            family_champion=family_champion,
+            global_champion=global_champion,
+        ),
+        "champion": champion,
     }
     append_result(experiments_path, record)
-    records = load_results(experiments_path)
-    results_tsv = write_results_tsv(run_dir / "results.tsv", records)
+    results_tsv = write_results_tsv(run_dir / "results.tsv", [*existing_records, record])
 
     strategy_snapshot = snapshot_strategy(_current_strategy_path(), run_output_dir, run_id)
     summary_path = run_output_dir / "summary.json"
     summary_path.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    if is_champion:
-        champions[evaluation.family] = {
-            "run_id": run_id,
-            "primary_score": evaluation.primary_score,
-            "strategy_id": evaluation.strategy_id,
-            "summary": evaluation.summary,
-            "strategy_snapshot": str(strategy_snapshot),
-        }
-        save_champion(champions_path, champions)
-        snapshot_strategy(_current_strategy_path(), run_dir / "champions" / evaluation.family, run_id)
-    elif not champions_path.exists():
-        save_champion(champions_path, {})
+    champions = load_champion(champions_path)
+    families = dict(champions.get("families", {}))
+    if family_champion:
+        family_snapshot = snapshot_strategy(_current_strategy_path(), run_dir / "champions" / evaluation.family, run_id)
+        families[evaluation.family] = _champion_entry(record, family_snapshot)
+    champions["families"] = families
+    if global_champion:
+        global_snapshot = snapshot_strategy(_current_strategy_path(), run_dir / "champions" / "global", run_id)
+        champions["global"] = _champion_entry(record, global_snapshot)
+    elif "global" not in champions:
+        champions["global"] = None
+    save_champion(champions_path, champions)
 
     return {
         "summary": summary_path,
