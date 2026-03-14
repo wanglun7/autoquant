@@ -150,6 +150,10 @@ def test_trading_runner_distinguishes_family_and_global_champions(tmp_path: Path
         "binance4h_research.trading_autoresearch.runner._current_strategy_path",
         lambda: strategy_path,
     )
+    monkeypatch.setattr(
+        "binance4h_research.trading_autoresearch.runner._repo_family_champion_dir",
+        lambda: tmp_path / "family_champions",
+    )
 
     outputs = [evaluate_and_record(program) for _ in range(3)]
 
@@ -168,6 +172,8 @@ def test_trading_runner_distinguishes_family_and_global_champions(tmp_path: Path
     champions = json.loads(Path(outputs[-1]["champions"]).read_text(encoding="utf-8"))
     assert champions["families"]["cross_sectional"]["run_id"] == records[0]["run_id"]
     assert champions["families"]["btc_time_series"]["run_id"] == records[2]["run_id"]
+    assert Path(champions["families"]["cross_sectional"]["published_source"]).exists()
+    assert Path(champions["families"]["btc_time_series"]["published_source"]).exists()
     assert champions["global"]["run_id"] == records[2]["run_id"]
 
 
@@ -196,6 +202,10 @@ def test_trading_runner_global_mode_uses_global_promotion_alias(tmp_path: Path, 
     monkeypatch.setattr(
         "binance4h_research.trading_autoresearch.runner._current_strategy_path",
         lambda: strategy_path,
+    )
+    monkeypatch.setattr(
+        "binance4h_research.trading_autoresearch.runner._repo_family_champion_dir",
+        lambda: tmp_path / "family_champions",
     )
 
     outputs = [evaluate_and_record(program) for _ in range(2)]

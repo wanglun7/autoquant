@@ -18,8 +18,8 @@ PYTHONPATH=src python3 -m binance4h_research run-trading-autoresearch-batch --pr
 - why it might help
 - whether it was rejected, kept, or promoted
 8. If the run is only `keep`, summarize it and stop. Do not auto-push.
-9. If the run is a `family_champion` but not a `global_champion`, stage the relevant code changes, commit them, and push a research branch such as `research/<family>`. Do not add large local `data/` or `results/` artifacts unless the repo already tracks them on purpose.
-10. If the run is a `global_champion`, stage the relevant code changes, commit them, and push the main working branch.
+9. If the run is a `family_champion`, make sure the mirrored file in `src/binance4h_research/trading_autoresearch/family_champions/` is preserved, then stage the relevant code changes, commit them, and push the current branch. Do not add large local `data/` or `results/` artifacts unless the repo already tracks them on purpose.
+10. If the run is a `global_champion`, stage the relevant code changes, commit them, and push the current branch.
 
 ## Good Changes
 

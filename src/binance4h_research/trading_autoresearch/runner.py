@@ -7,7 +7,15 @@ import json
 from .evaluate import evaluate_current_strategy
 from .prepare_market import build_context, save_context_summary
 from .program import TradingAutoResearchProgram
-from .store import append_result, load_champion, load_results, save_champion, snapshot_strategy, write_results_tsv
+from .store import (
+    append_result,
+    load_champion,
+    load_results,
+    publish_family_champion,
+    save_champion,
+    snapshot_strategy,
+    write_results_tsv,
+)
 
 
 def build_trading_context(program: TradingAutoResearchProgram) -> dict[str, Path]:
@@ -18,6 +26,10 @@ def build_trading_context(program: TradingAutoResearchProgram) -> dict[str, Path
 
 def _current_strategy_path() -> Path:
     return Path(__file__).with_name("strategy.py")
+
+
+def _repo_family_champion_dir() -> Path:
+    return Path(__file__).with_name("family_champions")
 
 
 def _best_record(records: list[dict[str, object]], family: str | None = None) -> dict[str, object] | None:
@@ -127,7 +139,9 @@ def evaluate_and_record(program: TradingAutoResearchProgram) -> dict[str, Path]:
     families = dict(champions.get("families", {}))
     if family_champion:
         family_snapshot = snapshot_strategy(_current_strategy_path(), run_dir / "champions" / evaluation.family, run_id)
+        published_source = publish_family_champion(_current_strategy_path(), _repo_family_champion_dir(), evaluation.family)
         families[evaluation.family] = _champion_entry(record, family_snapshot)
+        families[evaluation.family]["published_source"] = str(published_source)
     champions["families"] = families
     if global_champion:
         global_snapshot = snapshot_strategy(_current_strategy_path(), run_dir / "champions" / "global", run_id)

@@ -79,3 +79,10 @@ def snapshot_strategy(source: Path, target_dir: Path, run_id: str) -> Path:
     target = target_dir / f"{run_id}_strategy.py"
     shutil.copy2(source, target)
     return target
+
+
+def publish_family_champion(source: Path, target_dir: Path, family: str) -> Path:
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / f"{family}.py"
+    shutil.copy2(source, target)
+    return target
