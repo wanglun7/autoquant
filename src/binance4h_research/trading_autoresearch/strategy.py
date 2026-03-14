@@ -6,9 +6,9 @@ import pandas as pd
 
 
 STRATEGY_METADATA = {
-    "strategy_id": "btc_state_breakout_volume_ls_55d",
+    "strategy_id": "btc_trend_pullback_osc_risk_switch_90d",
     "family": "btc_time_series",
-    "description": "BTC long-short breakout with volume confirmation, volatility targeting, and funding-aware risk gating.",
+    "description": "BTC long-short pullback strategy using trend regime, oscillator entries, and a volatility risk switch.",
 }
 
 
@@ -60,15 +60,19 @@ def build_cross_sectional_weights(
 def build_btc_time_series_weights(
     context,
     *,
-    entry_lookback_days: int = 55,
-    exit_lookback_days: int = 20,
-    momentum_lookback_days: int = 20,
-    volume_fast_days: int = 5,
-    volume_slow_days: int = 20,
+    fast_ma_days: int = 20,
+    slow_ma_days: int = 90,
+    long_momentum_days: int = 90,
+    oscillator_days: int = 10,
     funding_lookback_days: int = 7,
-    vol_lookback_days: int = 20,
-    volume_ratio_threshold: float = 1.05,
-    momentum_exit_threshold: float = 0.01,
+    vol_fast_days: int = 5,
+    vol_slow_days: int = 30,
+    vol_target_days: int = 20,
+    long_momentum_floor: float = 0.03,
+    ma_spread_floor: float = 0.01,
+    oscillator_entry_z: float = 1.2,
+    oscillator_exit_z: float = 0.25,
+    vol_ratio_cap: float = 1.2,
     funding_soft_cap: float = 0.00005,
     funding_hard_cap: float = 0.00020,
     vol_target: float = 0.010,
@@ -78,32 +82,54 @@ def build_btc_time_series_weights(
     bars_per_day = _bars_per_day(4)
     btc_symbol = context.btc_symbol
     close = context.closes[btc_symbol]
-    volume = context.quote_volume[btc_symbol]
     funding = context.funding[btc_symbol]
     prior_close = close.shift(1)
-    entry_bars = entry_lookback_days * bars_per_day
-    exit_bars = exit_lookback_days * bars_per_day
-    momentum_bars = momentum_lookback_days * bars_per_day
-    volume_fast_bars = volume_fast_days * bars_per_day
-    volume_slow_bars = volume_slow_days * bars_per_day
+    fast_ma_bars = fast_ma_days * bars_per_day
+    slow_ma_bars = slow_ma_days * bars_per_day
+    long_momentum_bars = long_momentum_days * bars_per_day
+    oscillator_bars = oscillator_days * bars_per_day
+    vol_fast_bars = vol_fast_days * bars_per_day
+    vol_slow_bars = vol_slow_days * bars_per_day
     funding_bars = funding_lookback_days * bars_per_day
-    vol_bars = vol_lookback_days * bars_per_day
+    vol_target_bars = vol_target_days * bars_per_day
 
-    entry_high = close.shift(2).rolling(entry_bars).max()
-    entry_low = close.shift(2).rolling(entry_bars).min()
-    exit_high = close.shift(2).rolling(exit_bars).max()
-    exit_low = close.shift(2).rolling(exit_bars).min()
-    momentum = prior_close.div(close.shift(1 + momentum_bars)).sub(1.0)
-    volume_fast = volume.shift(1).rolling(volume_fast_bars).mean()
-    volume_slow = volume.shift(1).rolling(volume_slow_bars).mean()
-    volume_ratio = volume_fast.div(volume_slow.replace(0.0, pd.NA))
-    realized_vol = close.pct_change().shift(1).rolling(vol_bars).std()
+    fast_ma = close.shift(1).rolling(fast_ma_bars).mean()
+    slow_ma = close.shift(1).rolling(slow_ma_bars).mean()
+    ma_spread = fast_ma.div(slow_ma.replace(0.0, pd.NA)).sub(1.0)
+    long_momentum = prior_close.div(close.shift(1 + long_momentum_bars)).sub(1.0)
+    osc_mean = close.shift(1).rolling(oscillator_bars).mean()
+    osc_std = close.shift(1).rolling(oscillator_bars).std().replace(0.0, pd.NA)
+    oscillator_z = prior_close.sub(osc_mean).div(osc_std)
+    realized_returns = close.pct_change().shift(1)
+    vol_fast = realized_returns.rolling(vol_fast_bars).std()
+    vol_slow = realized_returns.rolling(vol_slow_bars).std()
+    vol_ratio = vol_fast.div(vol_slow.replace(0.0, pd.NA))
+    realized_vol = realized_returns.rolling(vol_target_bars).std()
     funding_mean = funding.shift(1).rolling(funding_bars).mean()
+    risk_on = vol_ratio.lt(vol_ratio_cap).fillna(False)
+    trend_up = (ma_spread > ma_spread_floor) & (long_momentum > long_momentum_floor)
+    trend_down = (ma_spread < -ma_spread_floor) & (long_momentum < -long_momentum_floor)
 
-    enter_long = (prior_close > entry_high) & (momentum > 0.0) & (volume_ratio > volume_ratio_threshold)
-    exit_long = (prior_close < exit_low) | (momentum < -momentum_exit_threshold)
-    enter_short = (prior_close < entry_low) & (momentum < 0.0) & (volume_ratio > volume_ratio_threshold)
-    exit_short = (prior_close > exit_high) | (momentum > momentum_exit_threshold)
+    enter_long = (
+        trend_up
+        & risk_on
+        & (oscillator_z < -oscillator_entry_z)
+    )
+    exit_long = (
+        (~trend_up)
+        | (~risk_on)
+        | (oscillator_z > -oscillator_exit_z)
+    )
+    enter_short = (
+        trend_down
+        & risk_on
+        & (oscillator_z > oscillator_entry_z)
+    )
+    exit_short = (
+        (~trend_down)
+        | (~risk_on)
+        | (oscillator_z < oscillator_exit_z)
+    )
 
     vol_scale = vol_target / realized_vol.replace(0.0, pd.NA)
     vol_scale = vol_scale.clip(lower=0.0, upper=1.0).fillna(0.0)
