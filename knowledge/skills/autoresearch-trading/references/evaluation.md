@@ -34,4 +34,5 @@ Champion comparison uses test-set Sharpe as the primary score, after the hard co
 - `experiments.jsonl`
 - `results.tsv`
 - `champions.json`
+- `research_log.jsonl`
 - `runs/<run_id>/summary.json`

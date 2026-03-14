@@ -17,9 +17,11 @@ from .paper_approx_config import load_paper_approx_config
 from .trading_autoresearch import (
     build_trading_context,
     load_trading_autoresearch_program,
+    record_trading_research_turn,
     replay_trading_run,
     run_trading_autoresearch_batch,
     show_trading_champion,
+    show_trading_research_log,
 )
 from .universe import build_universe_membership, save_universe_membership
 
@@ -95,6 +97,13 @@ def _build_parser() -> argparse.ArgumentParser:
     trading_replay = sub.add_parser("replay-trading-run", help="Replay one trading-autoresearch run")
     trading_replay.add_argument("--program", required=True)
     trading_replay.add_argument("--run-id", required=True)
+
+    trading_record = sub.add_parser("record-trading-research-turn", help="Append one trading-autoresearch research-log note")
+    trading_record.add_argument("--program", required=True)
+    trading_record.add_argument("--note-file", required=True)
+
+    trading_log = sub.add_parser("show-trading-research-log", help="Show the trading-autoresearch research-log path")
+    trading_log.add_argument("--program", required=True)
     return parser
 
 
@@ -229,6 +238,18 @@ def main() -> None:
     if args.command == "replay-trading-run":
         program = load_trading_autoresearch_program(args.program)
         path = replay_trading_run(program, args.run_id)
+        print(path)
+        return
+
+    if args.command == "record-trading-research-turn":
+        program = load_trading_autoresearch_program(args.program)
+        path = record_trading_research_turn(program, args.note_file)
+        print(path)
+        return
+
+    if args.command == "show-trading-research-log":
+        program = load_trading_autoresearch_program(args.program)
+        path = show_trading_research_log(program)
         print(path)
         return
 

@@ -1,17 +1,22 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+import sys
 
 import pandas as pd
 
+from binance4h_research.cli import main as cli_main
 from binance4h_research.trading_autoresearch.evaluate import TradingEvaluation
 from binance4h_research.trading_autoresearch.evaluate import evaluate_current_strategy
 from binance4h_research.trading_autoresearch.program import TradingAutoResearchProgram
 from binance4h_research.trading_autoresearch.runner import (
     build_trading_context,
     evaluate_and_record,
+    record_trading_research_turn,
     replay_trading_run,
     run_trading_autoresearch_batch,
+    show_trading_research_log,
 )
 
 
@@ -94,8 +99,6 @@ def test_trading_runner_writes_logs_and_replay(tmp_path: Path) -> None:
     rows = [line for line in outputs["experiments"].read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(rows) == 1
 
-    import json
-
     record = json.loads(rows[0])
     assert "parent_run_id" in record
     assert "family_champion" in record
@@ -157,8 +160,6 @@ def test_trading_runner_distinguishes_family_and_global_champions(tmp_path: Path
 
     outputs = [evaluate_and_record(program) for _ in range(3)]
 
-    import json
-
     records = [
         json.loads(line)
         for line in Path(outputs[-1]["experiments"]).read_text(encoding="utf-8").splitlines()
@@ -210,8 +211,6 @@ def test_trading_runner_global_mode_uses_global_promotion_alias(tmp_path: Path, 
 
     outputs = [evaluate_and_record(program) for _ in range(2)]
 
-    import json
-
     records = [
         json.loads(line)
         for line in Path(outputs[-1]["experiments"]).read_text(encoding="utf-8").splitlines()
@@ -221,3 +220,126 @@ def test_trading_runner_global_mode_uses_global_promotion_alias(tmp_path: Path, 
     assert records[1]["family_champion"] is True
     assert records[1]["global_champion"] is False
     assert records[1]["champion"] is False
+
+
+def _research_turn_note(run_id: str, baseline_run_id: str) -> dict[str, object]:
+    return {
+        "timestamp": "2026-03-14T04:30:00Z",
+        "family": "btc_time_series",
+        "objective": "Improve walk-forward stability without harming 2x cost resilience.",
+        "hypothesis": "Scaling position size by trend strength may reduce weak-trend overexposure.",
+        "planned_change": "Scale active BTC position size by normalized trend strength.",
+        "success_criteria": "Non-negative deltas in test Sharpe, test net return, and stress_2x net return.",
+        "baseline_run_id": baseline_run_id,
+        "run_id": run_id,
+        "status": "keep",
+        "family_champion": False,
+        "global_champion": False,
+        "comparison": {
+            "test_sharpe_delta": -0.02,
+            "test_net_return_delta": -0.01,
+            "stress_2x_delta": -0.03,
+        },
+        "conclusion": "The idea slightly degraded the BTC champion.",
+        "next_best_axis": "Entry timing",
+    }
+
+
+def _write_program_yaml(tmp_path: Path, data_dir: Path) -> Path:
+    path = tmp_path / "program.yaml"
+    path.write_text(
+        "\n".join(
+            [
+                "name: trading_autoresearch_test",
+                f"data_dir: {data_dir}",
+                f"processed_dir: {tmp_path / 'processed'}",
+                f"results_dir: {tmp_path / 'results'}",
+                "",
+                "costs:",
+                "  fee_bps: 4.0",
+                "  slippage_bps: 2.0",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_trading_research_log_roundtrip_and_cli(tmp_path: Path, monkeypatch, capsys) -> None:
+    data_dir = _seed_market(tmp_path)
+    program = TradingAutoResearchProgram(
+        name="trading_autoresearch_test",
+        data_dir=data_dir,
+        processed_dir=tmp_path / "processed",
+        results_dir=tmp_path / "results",
+    )
+    outputs = run_trading_autoresearch_batch(program)
+    program_yaml = _write_program_yaml(tmp_path, data_dir)
+
+    log_path = show_trading_research_log(program)
+    assert log_path.exists()
+    assert log_path.read_text(encoding="utf-8") == ""
+
+    run_record = json.loads(Path(outputs["summary"]).read_text(encoding="utf-8"))
+    note = _research_turn_note(run_record["run_id"], run_record["family_parent_run_id"])
+    note_path = tmp_path / "note.json"
+    note_path.write_text(json.dumps(note), encoding="utf-8")
+
+    recorded_path = record_trading_research_turn(program, note_path)
+    assert recorded_path == log_path
+    entries = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(entries) == 1
+    assert entries[0]["run_id"] == run_record["run_id"]
+
+    monkeypatch.setattr(sys, "argv", ["binance4h", "show-trading-research-log", "--program", str(program_yaml)])
+    cli_main()
+    assert capsys.readouterr().out.strip() == str(log_path)
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["binance4h", "record-trading-research-turn", "--program", str(program_yaml), "--note-file", str(note_path)],
+    )
+    cli_main()
+    assert capsys.readouterr().out.strip() == str(log_path)
+    entries = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(entries) == 2
+
+
+def test_trading_research_log_rejects_unknown_run_id(tmp_path: Path) -> None:
+    data_dir = _seed_market(tmp_path)
+    program = TradingAutoResearchProgram(
+        name="trading_autoresearch_test",
+        data_dir=data_dir,
+        processed_dir=tmp_path / "processed",
+        results_dir=tmp_path / "results",
+    )
+    note_path = tmp_path / "note.json"
+    note_path.write_text(json.dumps(_research_turn_note("unknown-run", "")), encoding="utf-8")
+
+    import pytest
+
+    with pytest.raises(FileNotFoundError, match="Unknown run_id"):
+        record_trading_research_turn(program, note_path)
+
+
+def test_trading_research_log_rejects_invalid_note(tmp_path: Path) -> None:
+    data_dir = _seed_market(tmp_path)
+    program = TradingAutoResearchProgram(
+        name="trading_autoresearch_test",
+        data_dir=data_dir,
+        processed_dir=tmp_path / "processed",
+        results_dir=tmp_path / "results",
+    )
+    outputs = run_trading_autoresearch_batch(program)
+    run_record = json.loads(Path(outputs["summary"]).read_text(encoding="utf-8"))
+    invalid_note = _research_turn_note(run_record["run_id"], run_record["family_parent_run_id"])
+    invalid_note["comparison"].pop("stress_2x_delta")
+    note_path = tmp_path / "invalid_note.json"
+    note_path.write_text(json.dumps(invalid_note), encoding="utf-8")
+
+    import pytest
+
+    with pytest.raises(ValueError, match="Missing comparison fields"):
+        record_trading_research_turn(program, note_path)

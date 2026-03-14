@@ -7,6 +7,29 @@ import shutil
 import pandas as pd
 
 
+RESEARCH_TURN_REQUIRED_FIELDS = (
+    "timestamp",
+    "family",
+    "objective",
+    "hypothesis",
+    "planned_change",
+    "success_criteria",
+    "baseline_run_id",
+    "run_id",
+    "status",
+    "family_champion",
+    "global_champion",
+    "comparison",
+    "conclusion",
+    "next_best_axis",
+)
+RESEARCH_TURN_REQUIRED_COMPARISON_FIELDS = (
+    "test_sharpe_delta",
+    "test_net_return_delta",
+    "stress_2x_delta",
+)
+
+
 def empty_champions() -> dict[str, object]:
     return {"families": {}, "global": None}
 
@@ -21,6 +44,84 @@ def append_result(path: Path, record: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def load_research_turns(path: Path) -> list[dict[str, object]]:
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def ensure_research_log(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text("", encoding="utf-8")
+    return path
+
+
+def _require_fields(payload: dict[str, object], required: tuple[str, ...], label: str) -> None:
+    missing = [field for field in required if field not in payload]
+    if missing:
+        raise ValueError(f"Missing {label} fields: {', '.join(missing)}")
+
+
+def _require_string(payload: dict[str, object], field: str) -> None:
+    value = payload[field]
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be a string")
+
+
+def _require_bool(payload: dict[str, object], field: str) -> None:
+    value = payload[field]
+    if not isinstance(value, bool):
+        raise ValueError(f"{field} must be a boolean")
+
+
+def _require_number(payload: dict[str, object], field: str) -> None:
+    value = payload[field]
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ValueError(f"{field} must be numeric")
+
+
+def validate_research_turn(note: dict[str, object]) -> dict[str, object]:
+    if not isinstance(note, dict):
+        raise ValueError("Research turn note must be a JSON object")
+    _require_fields(note, RESEARCH_TURN_REQUIRED_FIELDS, "research turn")
+
+    for field in (
+        "timestamp",
+        "family",
+        "objective",
+        "hypothesis",
+        "planned_change",
+        "success_criteria",
+        "baseline_run_id",
+        "run_id",
+        "status",
+        "conclusion",
+        "next_best_axis",
+    ):
+        _require_string(note, field)
+
+    for field in ("family_champion", "global_champion"):
+        _require_bool(note, field)
+
+    comparison = note["comparison"]
+    if not isinstance(comparison, dict):
+        raise ValueError("comparison must be an object")
+    _require_fields(comparison, RESEARCH_TURN_REQUIRED_COMPARISON_FIELDS, "comparison")
+    for field in RESEARCH_TURN_REQUIRED_COMPARISON_FIELDS:
+        _require_number(comparison, field)
+
+    return note
+
+
+def append_research_turn(path: Path, note: dict[str, object]) -> Path:
+    ensure_research_log(path)
+    validate_research_turn(note)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(note, ensure_ascii=False) + "\n")
+    return path
 
 
 def write_results_tsv(path: Path, records: list[dict[str, object]]) -> Path:

@@ -4,6 +4,19 @@
 
 Find Binance USDT-M perpetual strategies that remain positive after `fee + slippage + funding`, and still survive a `2x` cost stress test.
 
+## Research Loop
+
+Run this as a hypothesis-driven loop, not a blind parameter search:
+
+1. choose one family
+2. restate one objective
+3. write one falsifiable hypothesis
+4. make one focused code change
+5. evaluate on the fixed setup
+6. record the conclusion in the research log
+
+If a run is only `keep`, log it but do not preserve it as the active working strategy.
+
 ## Core Rule
 
 This workflow follows the Karpathy `autoresearch` pattern:
@@ -31,6 +44,7 @@ Do not modify these during normal research runs.
 - Every promoted family champion is also mirrored into `src/binance4h_research/trading_autoresearch/family_champions/<family>.py`
 - Treat these files as published outputs of the research loop, not as the main mutation surface
 - Continue editing only `strategy.py` during normal research runs
+- When starting a new turn for a family, prefer using that family's mirrored champion as the working baseline
 
 The agent may invent new signals, filters, ranking formulas, spread logic, and position mapping inside this file, as long as it preserves the public interface:
 
@@ -106,6 +120,7 @@ PYTHONPATH=src python3 -m binance4h_research replay-trading-run --program config
 - `results/trading_autoresearch/<program>/experiments.jsonl`
 - `results/trading_autoresearch/<program>/results.tsv`
 - `results/trading_autoresearch/<program>/champions.json`
+- `results/trading_autoresearch/<program>/research_log.jsonl`
 - `results/trading_autoresearch/<program>/runs/<run_id>/summary.json`
 - `results/trading_autoresearch/<program>/champions/<family>/`
 - `results/trading_autoresearch/<program>/champions/global/`

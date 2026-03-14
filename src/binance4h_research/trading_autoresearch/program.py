@@ -45,6 +45,10 @@ class TradingAutoResearchProgram:
     def run_dir(self) -> Path:
         return self.results_dir / self.name
 
+    @property
+    def research_log_path(self) -> Path:
+        return self.run_dir / "research_log.jsonl"
+
 
 def _from_dict(cls: type[Any], payload: dict[str, Any]) -> Any:
     return cls(**payload)

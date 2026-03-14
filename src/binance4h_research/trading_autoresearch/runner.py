@@ -8,12 +8,15 @@ from .evaluate import evaluate_current_strategy
 from .prepare_market import build_context, save_context_summary
 from .program import TradingAutoResearchProgram
 from .store import (
+    append_research_turn,
     append_result,
+    ensure_research_log,
     load_champion,
     load_results,
     publish_family_champion,
     save_champion,
     snapshot_strategy,
+    validate_research_turn,
     write_results_tsv,
 )
 
@@ -168,6 +171,22 @@ def show_trading_champion(program: TradingAutoResearchProgram) -> Path:
     if not champions_path.exists():
         raise FileNotFoundError(f"Missing champions file: {champions_path}")
     return champions_path
+
+
+def record_trading_research_turn(program: TradingAutoResearchProgram, note_path: str | Path) -> Path:
+    payload = json.loads(Path(note_path).read_text(encoding="utf-8"))
+    note = validate_research_turn(payload)
+    known_run_ids = {str(record["run_id"]) for record in load_results(program.run_dir / "experiments.jsonl")}
+    if note["run_id"] not in known_run_ids:
+        raise FileNotFoundError(f"Unknown run_id: {note['run_id']}")
+    baseline_run_id = str(note["baseline_run_id"])
+    if baseline_run_id and baseline_run_id not in known_run_ids:
+        raise FileNotFoundError(f"Unknown baseline_run_id: {baseline_run_id}")
+    return append_research_turn(program.research_log_path, note)
+
+
+def show_trading_research_log(program: TradingAutoResearchProgram) -> Path:
+    return ensure_research_log(program.research_log_path)
 
 
 def replay_trading_run(program: TradingAutoResearchProgram, run_id: str) -> Path:

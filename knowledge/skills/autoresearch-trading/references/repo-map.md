@@ -18,6 +18,8 @@
 PYTHONPATH=src python3 -m binance4h_research build-trading-context --program configs/trading_autoresearch.yaml
 PYTHONPATH=src python3 -m binance4h_research run-trading-autoresearch-batch --program configs/trading_autoresearch.yaml
 PYTHONPATH=src python3 -m binance4h_research show-trading-champions --program configs/trading_autoresearch.yaml
+PYTHONPATH=src python3 -m binance4h_research show-trading-research-log --program configs/trading_autoresearch.yaml
+PYTHONPATH=src python3 -m binance4h_research record-trading-research-turn --program configs/trading_autoresearch.yaml --note-file <note.json>
 PYTHONPATH=src python3 -m binance4h_research replay-trading-run --program configs/trading_autoresearch.yaml --run-id <run_id>
 ```
 
@@ -25,4 +27,5 @@ PYTHONPATH=src python3 -m binance4h_research replay-trading-run --program config
 
 - `results/trading_autoresearch/trading_autoresearch_v1/results.tsv`
 - `results/trading_autoresearch/trading_autoresearch_v1/champions.json`
+- `results/trading_autoresearch/trading_autoresearch_v1/research_log.jsonl`
 - `results/trading_autoresearch/trading_autoresearch_v1/runs/`
