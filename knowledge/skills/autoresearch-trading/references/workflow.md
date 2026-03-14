@@ -17,6 +17,7 @@ PYTHONPATH=src python3 -m binance4h_research run-trading-autoresearch-batch --pr
 - what changed
 - why it might help
 - whether it was rejected, kept, or promoted
+8. If the run is `keep` or `champion`, stage the relevant code changes, commit them, and push the current branch to the configured remote. Do not add large local `data/` or `results/` artifacts unless the repo already tracks them on purpose.
 
 ## Good Changes
 
