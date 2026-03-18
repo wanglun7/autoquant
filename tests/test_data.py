@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+from pandas import DatetimeTZDtype
 
 from binance4h_research.data import (
     fetch_funding_range,
@@ -12,10 +13,9 @@ from binance4h_research.data import (
 )
 
 
-class _PagedClient:
+class _OverlappingKlineClient:
     def __init__(self) -> None:
-        self.kline_calls = 0
-        self.funding_calls = 0
+        self.calls = 0
 
     def klines(
         self,
@@ -25,8 +25,8 @@ class _PagedClient:
         end_time: int | None = None,
         limit: int = 1500,
     ) -> pd.DataFrame:
-        self.kline_calls += 1
-        if self.kline_calls == 1:
+        self.calls += 1
+        if self.calls == 1:
             return pd.DataFrame(
                 {
                     "open_time": pd.to_datetime([0, 14_400_000], unit="ms", utc=True),
@@ -42,24 +42,30 @@ class _PagedClient:
                     "taker_buy_quote_volume": [1.0, 1.0],
                 }
             )
-        if self.kline_calls == 2:
+        if self.calls == 2:
             assert start_time == 28_800_000
+            assert end_time == 57_600_000
             return pd.DataFrame(
                 {
-                    "open_time": pd.to_datetime([28_800_000], unit="ms", utc=True),
-                    "open": [3.0],
-                    "high": [3.0],
-                    "low": [3.0],
-                    "close": [3.0],
-                    "volume": [1.0],
-                    "close_time": pd.to_datetime([43_199_999], unit="ms", utc=True),
-                    "quote_volume": [1.0],
-                    "trade_count": [1],
-                    "taker_buy_base_volume": [1.0],
-                    "taker_buy_quote_volume": [1.0],
+                    "open_time": pd.to_datetime([14_400_000, 28_800_000], unit="ms", utc=True),
+                    "open": [2.0, 3.0],
+                    "high": [2.0, 3.0],
+                    "low": [2.0, 3.0],
+                    "close": [2.0, 3.0],
+                    "volume": [1.0, 1.0],
+                    "close_time": pd.to_datetime([28_799_999, 43_199_999], unit="ms", utc=True),
+                    "quote_volume": [1.0, 1.0],
+                    "trade_count": [1, 1],
+                    "taker_buy_base_volume": [1.0, 1.0],
+                    "taker_buy_quote_volume": [1.0, 1.0],
                 }
             )
         return pd.DataFrame()
+
+
+class _OverlappingFundingClient:
+    def __init__(self) -> None:
+        self.calls = 0
 
     def funding_rates(
         self,
@@ -68,8 +74,8 @@ class _PagedClient:
         end_time: int | None = None,
         limit: int = 1000,
     ) -> pd.DataFrame:
-        self.funding_calls += 1
-        if self.funding_calls == 1:
+        self.calls += 1
+        if self.calls == 1:
             return pd.DataFrame(
                 {
                     "symbol": [symbol, symbol],
@@ -78,21 +84,22 @@ class _PagedClient:
                     "markPrice": [100.0, 101.0],
                 }
             )
-        if self.funding_calls == 2:
+        if self.calls == 2:
             assert start_time == 28_800_001
+            assert end_time == 57_600_000
             return pd.DataFrame(
                 {
-                    "symbol": [symbol],
-                    "fundingTime": pd.to_datetime([57_600_000], unit="ms", utc=True),
-                    "fundingRate": [0.003],
-                    "markPrice": [102.0],
+                    "symbol": [symbol, symbol],
+                    "fundingTime": pd.to_datetime([28_800_000, 57_600_000], unit="ms", utc=True),
+                    "fundingRate": [0.002, 0.003],
+                    "markPrice": [101.0, 102.0],
                 }
             )
         return pd.DataFrame()
 
 
-def test_range_fetch_paginates_without_duplicates() -> None:
-    client = _PagedClient()
+def test_fetch_klines_range_deduplicates_overlapping_pages() -> None:
+    client = _OverlappingKlineClient()
     klines = fetch_klines_range(
         client,
         symbol="AAAUSDT",
@@ -101,6 +108,16 @@ def test_range_fetch_paginates_without_duplicates() -> None:
         end_time=57_600_000,
         limit=2,
     )
+
+    expected_timestamps = [pd.Timestamp(0, tz="UTC"), pd.Timestamp(14_400_000, unit="ms", tz="UTC"), pd.Timestamp(28_800_000, unit="ms", tz="UTC")]
+    assert len(klines) == len(expected_timestamps)
+    assert klines["open_time"].is_unique
+    assert klines["open_time"].tolist() == expected_timestamps
+    assert klines["close_time"].iloc[0].tzinfo == pd.Timestamp(0, tz="UTC").tzinfo
+
+
+def test_fetch_funding_range_deduplicates_overlapping_pages() -> None:
+    client = _OverlappingFundingClient()
     funding = fetch_funding_range(
         client,
         symbol="AAAUSDT",
@@ -109,10 +126,11 @@ def test_range_fetch_paginates_without_duplicates() -> None:
         limit=2,
     )
 
-    assert len(klines) == 3
-    assert klines["open_time"].is_unique
-    assert len(funding) == 3
+    expected_times = [pd.Timestamp(0, tz="UTC"), pd.Timestamp(28_800_000, unit="ms", tz="UTC"), pd.Timestamp(57_600_000, unit="ms", tz="UTC")]
+    assert len(funding) == len(expected_times)
     assert funding["fundingTime"].is_unique
+    assert funding["fundingTime"].tolist() == expected_times
+    assert funding["fundingTime"].is_monotonic_increasing
 
 
 def test_loaders_roundtrip_cached_csvs(tmp_path: Path) -> None:
@@ -144,5 +162,23 @@ def test_loaders_roundtrip_cached_csvs(tmp_path: Path) -> None:
         }
     ).to_csv(data_dir / "funding" / "BTCUSDT.csv", index=False)
 
-    assert "BTCUSDT" in load_symbol_klines(data_dir)
-    assert "BTCUSDT" in load_symbol_funding(data_dir)
+    klines_map = load_symbol_klines(data_dir)
+    funding_map = load_symbol_funding(data_dir)
+
+    assert "BTCUSDT" in klines_map
+    assert "BTCUSDT" in funding_map
+
+    klines_df = klines_map["BTCUSDT"].copy()
+    assert isinstance(klines_df["open_time"].dtype, DatetimeTZDtype)
+    assert isinstance(klines_df["close_time"].dtype, DatetimeTZDtype)
+    assert klines_df["open_time"].is_monotonic_increasing
+    assert klines_df["close_time"].is_monotonic_increasing
+    assert klines_df["open"].iloc[0] == 100.0
+    assert klines_df["high"].iloc[0] == 101.0
+    assert klines_df["volume"].iloc[0] == 1.0
+
+    funding_df = funding_map["BTCUSDT"].copy()
+    assert isinstance(funding_df["fundingTime"].dtype, DatetimeTZDtype)
+    assert funding_df["fundingTime"].is_monotonic_increasing
+    assert funding_df["fundingRate"].iloc[0] == 0.0001
+    assert funding_df["markPrice"].iloc[0] == 100.0
