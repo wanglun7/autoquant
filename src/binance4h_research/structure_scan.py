@@ -630,14 +630,24 @@ def run_structure_scan(
     funding_raw = load_symbol_funding(config.data_dir)
 
     closes = build_close_matrix(klines)
-    opens = build_open_matrix(klines)
-    highs = combine_field_matrix(klines, "high")
-    lows = combine_field_matrix(klines, "low")
-    volume = combine_field_matrix(klines, "volume")
-    quote_volume = combine_field_matrix(klines, "quote_volume")
-    trade_count = combine_field_matrix(klines, "trade_count")
-    taker_buy_quote_volume = combine_field_matrix(klines, "taker_buy_quote_volume")
-    funding = funding_returns_from_events(funding_raw, opens.index).reindex(index=opens.index, columns=opens.columns, fill_value=0.0)
+    symbol_order = list(closes.columns)
+    row_index = closes.index
+
+    def _align(frame: pd.DataFrame, *, fill_value: float = np.nan) -> pd.DataFrame:
+        return frame.reindex(index=row_index, columns=symbol_order, fill_value=fill_value)
+
+    closes = _align(closes)
+    opens = _align(build_open_matrix(klines))
+    highs = _align(combine_field_matrix(klines, "high"))
+    lows = _align(combine_field_matrix(klines, "low"))
+    volume = _align(combine_field_matrix(klines, "volume"))
+    quote_volume = _align(combine_field_matrix(klines, "quote_volume"))
+    trade_count = _align(combine_field_matrix(klines, "trade_count"))
+    taker_buy_quote_volume = _align(combine_field_matrix(klines, "taker_buy_quote_volume"))
+    funding = _align(
+        funding_returns_from_events(funding_raw, opens.index),
+        fill_value=0.0,
+    )
 
     membership = _dynamic_membership(
         quote_volume=quote_volume,
