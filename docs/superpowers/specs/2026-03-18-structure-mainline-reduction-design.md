@@ -82,9 +82,9 @@ Responsibility boundaries:
 The four commands are intentionally independent readers of `data/raw`:
 
 - `fetch-data` writes raw Binance data into `data/raw`.
-- `run-structure-scan` reads raw data and writes scan outputs.
-- `run-structure-decompose` reads raw data and writes decomposition outputs.
-- `run-structure-validate` reads raw data and writes validation outputs.
+- `run-structure-scan` reads raw data and writes scan outputs to `results/structure_scan/scan_v1` by default.
+- `run-structure-decompose` reads raw data and writes decomposition outputs to `results/structure_decompose/decompose_v1` by default.
+- `run-structure-validate` reads raw data and writes validation outputs to `results/structure_validate/validate_v1` by default.
 
 `scan`, `decompose`, and `validate` do not consume each other's files as machine inputs. Their output directories are research artifacts for humans, not pipeline contracts.
 
