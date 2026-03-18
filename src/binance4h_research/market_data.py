@@ -4,16 +4,25 @@ import numpy as np
 import pandas as pd
 
 
+def _ensure_index_utc(index: pd.Index) -> pd.DatetimeIndex:
+    normalized = pd.DatetimeIndex(index)
+    if normalized.tz is None:
+        return normalized.tz_localize("UTC")
+    return normalized.tz_convert("UTC")
+
+
 def combine_field_matrix(klines: dict[str, pd.DataFrame], field: str) -> pd.DataFrame:
     series_map: dict[str, pd.Series] = {}
     for symbol, frame in klines.items():
         temp = frame[["open_time", field]].copy()
         temp = temp.dropna()
-        series_map[symbol] = temp.set_index("open_time")[field]
+        series: pd.Series = temp.set_index("open_time")[field]
+        series.index = _ensure_index_utc(series.index)
+        series_map[symbol] = series
     if not series_map:
         return pd.DataFrame()
     combined = pd.concat(series_map, axis=1, sort=False).sort_index()
-    combined.index = pd.DatetimeIndex(combined.index, tz="UTC")
+    combined.index = _ensure_index_utc(combined.index)
     combined = combined.reindex(sorted(combined.columns), axis=1)
     return combined
 
@@ -31,10 +40,13 @@ def funding_returns_from_events(
         if symbol not in funding.columns or frame.empty:
             continue
         temp = frame.copy()
-        temp["fundingTime"] = pd.to_datetime(temp["fundingTime"], utc=True)
+        temp["fundingTime"] = pd.to_datetime(temp["fundingTime"], utc=True, errors="coerce")
         temp["fundingRate"] = pd.to_numeric(temp["fundingRate"], errors="coerce").fillna(0.0)
-        funding_times = temp["fundingTime"].astype("int64").to_numpy()
-        funding_rates = temp["fundingRate"].to_numpy(dtype=float)
+        valid_times = temp["fundingTime"].notna()
+        if not valid_times.any():
+            continue
+        funding_times = temp.loc[valid_times, "fundingTime"].astype("int64").to_numpy()
+        funding_rates = temp.loc[valid_times, "fundingRate"].to_numpy(dtype=float)
         positions = np.searchsorted(index_values, funding_times, side="left")
         valid = (positions > 0) & (positions < len(index_values))
         if not valid.any():
